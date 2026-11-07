@@ -1,0 +1,34 @@
+<!DOCTYPE html>
+<html lang="en" class="dark">
+  <head>
+    <meta charset="UTF-8" />
+    <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='%236366f1'><path d='M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5'/></svg>" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Nova Bank — Next-Gen Banking Simulator</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+    <script type="module" crossorigin src="/assets/index-DvhMfk6c.js"></script>
+    <link rel="stylesheet" crossorigin href="/assets/index-XnDUx49g.css">
+  </head>
+  <body class="bg-navy-950 text-slate-100 min-h-screen antialiased selection:bg-brand-500 selection:text-white">
+    <div id="root">
+      <div style="min-height: 100vh; display: flex; align-items: center; justify-content: center; background-color: #030712; color: #94a3b8; font-family: sans-serif;">
+        <div style="text-align: center;">
+          <div style="font-size: 28px; font-weight: 800; color: #6366f1; margin-bottom: 8px; letter-spacing: -0.02em;">Nova Bank</div>
+          <div style="font-size: 14px;">Loading banking interface...</div>
+        </div>
+      </div>
+    </div>
+    <script>
+      window.addEventListener('error', function(e) {
+        var root = document.getElementById('root');
+        if (root && root.innerText.includes('Loading banking interface')) {
+          root.innerHTML = '<div style="padding: 24px; color: #f87171; background: #0f172a; font-family: monospace; border: 1px solid #dc2626; border-radius: 12px; margin: 24px; max-width: 600px; margin-inline: auto;">' +
+            '<h3 style="margin-bottom: 8px; font-size: 16px;">Application Startup Error</h3><pre style="white-space: pre-wrap; font-size: 13px;">' + ((e.error && (e.error.stack || e.error.message)) || e.message) + '</pre>' +
+            '<p style="color: #94a3b8; font-size: 12px; margin-top: 12px;">Try a hard reload (Ctrl+Shift+R / Cmd+Shift+R) to clear browser cache.</p></div>';
+        }
+      });
+    </script>
+  </body>
+</html>

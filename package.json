@@ -1,0 +1,23 @@
+{
+  "name": "banking-sim",
+  "version": "1.0.0",
+  "description": "Full-stack Banking Simulation with Vibe-GX, React, and SQLite",
+  "type": "module",
+  "scripts": {
+    "start": "node server/server.js",
+    "dev:server": "node --watch server/server.js",
+    "dev:client": "npm --prefix client run dev",
+    "build": "npm --prefix client run build",
+    "test": "node server/test-api.js"
+  },
+  "keywords": [
+    "banking",
+    "simulator",
+    "vibe-gx",
+    "react",
+    "sqlite",
+    "otp"
+  ],
+  "author": "",
+  "license": "MIT"
+}

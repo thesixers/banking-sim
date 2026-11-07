@@ -1,0 +1,17 @@
+{
+  "name": "banking-sim-server",
+  "version": "1.0.0",
+  "description": "High-performance banking simulator backend powered by Vibe-GX and Node.js",
+  "type": "module",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js",
+    "dev": "node --watch server.js",
+    "test:db": "node db/test.js"
+  },
+  "dependencies": {
+    "bcryptjs": "^2.4.3",
+    "jsonwebtoken": "^9.0.2",
+    "vibe-gx": "^4.3.0"
+  }
+}
