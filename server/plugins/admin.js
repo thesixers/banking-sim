@@ -1,10 +1,11 @@
 import crypto from "crypto";
 import bcrypt from "bcryptjs";
 import { db, transaction } from "../db/index.js";
-import { requireAdmin } from "../middleware/auth.js";
+import { requireAdmin, requireSuperAdmin } from "../middleware/auth.js";
 import {
   generateReferenceId,
   generateTransactionAlertHtml,
+  generateCardDetails,
 } from "../utils/helpers.js";
 
 export default async function adminPlugin(api) {
@@ -21,6 +22,7 @@ export default async function adminPlugin(api) {
     const totalTx = db.prepare("SELECT COUNT(*) as count, SUM(amount) as volume FROM transactions").get();
     const pendingWires = db.prepare("SELECT COUNT(*) as count FROM transactions WHERE status = 'PENDING_OTP'").get().count;
     const frozenCount = db.prepare("SELECT COUNT(*) as count FROM accounts WHERE is_frozen = 1").get().count;
+    const pendingCards = db.prepare("SELECT COUNT(*) as count FROM accounts WHERE card_status = 'PENDING'").get().count;
 
     const recentTx = db.prepare(`
       SELECT t.id, t.reference_id, t.type, t.amount, t.fee, t.status, t.description, t.created_at,
@@ -42,6 +44,7 @@ export default async function adminPlugin(api) {
         total_transactions: totalTx.count || 0,
         total_volume: totalTx.volume || 0,
         pending_wires: pendingWires,
+        pending_cards: pendingCards,
         frozen_accounts: frozenCount,
         recent_transactions: recentTx,
       },
@@ -62,6 +65,10 @@ export default async function adminPlugin(api) {
         u.full_name, 
         u.email, 
         u.role, 
+        u.admin_role,
+        u.email_verified,
+        u.is_dormant,
+        u.dormant_at,
         u.created_at,
         a.id as account_id,
         a.account_number,
@@ -71,6 +78,8 @@ export default async function adminPlugin(api) {
         a.is_frozen,
         a.card_number,
         a.card_expiry,
+        a.card_status,
+        a.card_applied_at,
         (SELECT COUNT(*) FROM transactions t WHERE t.sender_account_id = a.id OR t.recipient_account_id = a.id) as transaction_count
       FROM users u
       LEFT JOIN accounts a ON u.id = a.user_id
@@ -90,7 +99,7 @@ export default async function adminPlugin(api) {
     const { id } = req.params;
 
     const user = db.prepare(`
-      SELECT id, full_name, email, role, phone_number, created_at
+      SELECT id, full_name, email, role, admin_role, phone_number, created_at
       FROM users
       WHERE id = ?
     `).get(id);
@@ -100,7 +109,7 @@ export default async function adminPlugin(api) {
     }
 
     const account = db.prepare(`
-      SELECT id, account_number, routing_number, account_type, balance, currency, card_number, card_cvv, card_expiry, is_frozen, created_at
+      SELECT id, account_number, routing_number, account_type, balance, currency, card_number, card_cvv, card_expiry, card_status, card_applied_at, is_frozen, created_at
       FROM accounts
       WHERE user_id = ?
     `).get(user.id);
@@ -141,7 +150,7 @@ export default async function adminPlugin(api) {
    * POST /users/:id/adjust-balance
    * Master Admin balance control: CREDIT, DEBIT, or SET exact balance
    */
-  api.post("/users/:id/adjust-balance", { intercept: requireAdmin }, (req, res) => {
+  api.post("/users/:id/adjust-balance", { intercept: requireSuperAdmin }, (req, res) => {
     const { id } = req.params;
     const { action, amount, reason = "Administrative Balance Adjustment" } = req.body || {};
 
@@ -257,6 +266,14 @@ export default async function adminPlugin(api) {
     const { id } = req.params;
     const { is_frozen } = req.body || {};
 
+    const targetUser = db.prepare("SELECT id, role, admin_role FROM users WHERE id = ?").get(id);
+    if (!targetUser) return res.notFound("User not found");
+
+    const isSuper = req.user?.admin_role === "SUPER_ADMIN" || req.user?.email === "admin@novabank.com";
+    if (targetUser.role === "ADMIN" && !isSuper) {
+      return res.forbidden("Limited administrators cannot freeze other administrator accounts");
+    }
+
     const account = db.prepare("SELECT id, is_frozen FROM accounts WHERE user_id = ?").get(id);
     if (!account) return res.notFound("Account not found");
 
@@ -270,6 +287,47 @@ export default async function adminPlugin(api) {
   });
 
   /**
+   * POST /users/:id/toggle-dormant
+   * Reactivate or dormant a customer account
+   */
+  api.post("/users/:id/toggle-dormant", { intercept: requireAdmin }, (req, res) => {
+    const { id } = req.params;
+    const user = db.prepare("SELECT id, is_dormant FROM users WHERE id = ?").get(id);
+    if (!user) return res.notFound("User not found");
+
+    const newDormant = user.is_dormant === 1 ? 0 : 1;
+    const dormantAt = newDormant === 1 ? new Date().toISOString().replace("T", " ").slice(0, 19) : null;
+    db.prepare("UPDATE users SET is_dormant = ?, dormant_at = ? WHERE id = ?").run(newDormant, dormantAt, id);
+
+    return res.success(
+      { is_dormant: newDormant },
+      `User account has been marked as ${newDormant === 1 ? "DORMANT" : "ACTIVE"} by Administrator`
+    );
+  });
+
+  /**
+   * POST /users/:id/verify-email
+   * Admin manual verification override
+   */
+  api.post("/users/:id/verify-email", { intercept: requireAdmin }, (req, res) => {
+    const { id } = req.params;
+    const user = db.prepare("SELECT id FROM users WHERE id = ?").get(id);
+    if (!user) return res.notFound("User not found");
+
+    const verifiedAt = new Date().toISOString().replace("T", " ").slice(0, 19);
+    db.prepare(`
+      UPDATE users 
+      SET email_verified = 1, email_verified_at = ?, is_dormant = 0, dormant_at = NULL 
+      WHERE id = ?
+    `).run(verifiedAt, id);
+
+    return res.success(
+      { email_verified: 1, is_dormant: 0 },
+      "User email marked verified and dormancy cleared by Administrator"
+    );
+  });
+
+  /**
    * POST /users/:id/reset-password
    * Admin password override for customer
    */
@@ -279,6 +337,14 @@ export default async function adminPlugin(api) {
 
     if (!new_password || new_password.length < 6) {
       return res.badRequest("Password must be at least 6 characters long");
+    }
+
+    const targetUser = db.prepare("SELECT id, role, admin_role FROM users WHERE id = ?").get(id);
+    if (!targetUser) return res.notFound("User not found");
+
+    const isSuper = req.user?.admin_role === "SUPER_ADMIN" || req.user?.email === "admin@novabank.com";
+    if (targetUser.role === "ADMIN" && !isSuper) {
+      return res.forbidden("Limited staff administrators cannot reset passwords for other administrators");
     }
 
     const salt = bcrypt.genSaltSync(10);
@@ -307,8 +373,118 @@ export default async function adminPlugin(api) {
     return res.success({ ok: true }, "Customer account completely removed");
   };
 
-  api.del("/users/:id", { intercept: requireAdmin }, deleteUserHandler);
-  api.post("/users/:id/delete", { intercept: requireAdmin }, deleteUserHandler);
+  api.del("/users/:id", { intercept: requireSuperAdmin }, deleteUserHandler);
+  api.post("/users/:id/delete", { intercept: requireSuperAdmin }, deleteUserHandler);
+
+  /**
+   * POST /users/:id/set-role
+   * Master Admin can promote a customer to Limited Admin or demote them back to Customer
+   */
+  api.post("/users/:id/set-role", { intercept: requireSuperAdmin }, (req, res) => {
+    const { id } = req.params;
+    const { role, admin_role } = req.body || {};
+
+    if (id === req.user.id || id === "admin-master-system-001") {
+      return res.badRequest("Cannot alter role for the master system administrator");
+    }
+
+    const targetUser = db.prepare("SELECT id, full_name, email, role, admin_role FROM users WHERE id = ?").get(id);
+    if (!targetUser) return res.notFound("User not found");
+
+    if (targetUser.email === "admin@novabank.com") {
+      return res.badRequest("Cannot alter role for master administrator account");
+    }
+
+    let targetRole = role;
+    let targetAdminRole = admin_role;
+
+    if (targetRole === "ADMIN") {
+      targetRole = "ADMIN";
+      targetAdminRole = "LIMITED_ADMIN"; // Only Limited Staff Admin can be assigned to other users
+    } else if (targetRole === "CUSTOMER") {
+      targetRole = "CUSTOMER";
+      targetAdminRole = null;
+    } else {
+      return res.badRequest("Invalid role specified. Must be ADMIN or CUSTOMER.");
+    }
+
+    db.prepare(`
+      UPDATE users 
+      SET role = ?, admin_role = ?
+      WHERE id = ?
+    `).run(targetRole, targetAdminRole, id);
+
+    return res.success(
+      { id, role: targetRole, admin_role: targetAdminRole },
+      `Successfully updated ${targetUser.full_name} to ${targetRole === "ADMIN" ? "Limited Staff Administrator" : "Customer"}`
+    );
+  });
+
+  /**
+   * POST /users/:id/approve-card
+   * Admin approves and issues a Visa Debit Card for a customer
+   */
+  api.post("/users/:id/approve-card", { intercept: requireAdmin }, (req, res) => {
+    const { id } = req.params;
+    const user = db.prepare("SELECT id, full_name, email FROM users WHERE id = ?").get(id);
+    if (!user) return res.notFound("Customer not found");
+
+    const account = db.prepare("SELECT id, card_status FROM accounts WHERE user_id = ?").get(id);
+    if (!account) return res.notFound("Account not found");
+
+    const card = generateCardDetails();
+
+    transaction(() => {
+      db.prepare(`
+        UPDATE accounts 
+        SET card_status = 'ACTIVE', card_number = ?, card_cvv = ?, card_expiry = ?, is_frozen = 0
+        WHERE id = ?
+      `).run(card.cardNumber, card.cvv, card.expiry, account.id);
+
+      db.prepare(`
+        INSERT INTO notifications (id, user_id, email, title, subject, message, type)
+        VALUES (?, ?, ?, 'Debit Card Approved & Issued', 'Your First Horizon Platinum Virtual Visa is Ready',
+                'Congratulations! Your application for a First Horizon Platinum Virtual Visa debit card has been approved. Your card is now active and accessible in your digital banking dashboard.', 'EMAIL')
+      `).run(crypto.randomUUID(), user.id, user.email);
+    });
+
+    return res.success(
+      { card_status: "ACTIVE", card_number: card.cardNumber },
+      `Visa Platinum debit card approved and issued for ${user.full_name}`
+    );
+  });
+
+  /**
+   * POST /users/:id/reject-card
+   * Admin declines a debit card application
+   */
+  api.post("/users/:id/reject-card", { intercept: requireAdmin }, (req, res) => {
+    const { id } = req.params;
+    const user = db.prepare("SELECT id, full_name, email FROM users WHERE id = ?").get(id);
+    if (!user) return res.notFound("Customer not found");
+
+    const account = db.prepare("SELECT id, card_status FROM accounts WHERE user_id = ?").get(id);
+    if (!account) return res.notFound("Account not found");
+
+    transaction(() => {
+      db.prepare(`
+        UPDATE accounts 
+        SET card_status = 'REJECTED'
+        WHERE id = ?
+      `).run(account.id);
+
+      db.prepare(`
+        INSERT INTO notifications (id, user_id, email, title, subject, message, type)
+        VALUES (?, ?, ?, 'Debit Card Application Status', 'Update on Your Card Application',
+                'Your application for a First Horizon Platinum Virtual Visa card was declined by administration. Please contact support or re-apply from your dashboard.', 'EMAIL')
+      `).run(crypto.randomUUID(), user.id, user.email);
+    });
+
+    return res.success(
+      { card_status: "REJECTED" },
+      `Card application for ${user.full_name} has been rejected`
+    );
+  });
 
   /**
    * GET /transactions
@@ -400,6 +576,11 @@ export default async function adminPlugin(api) {
     }
 
     if (action === "FORCE_CANCEL") {
+      const isSuper = req.user?.admin_role === "SUPER_ADMIN" || req.user?.email === "admin@novabank.com";
+      if (!isSuper) {
+        return res.forbidden("Only Master Administrators can force-cancel pending wire transactions");
+      }
+
       if (tx.status !== "PENDING_OTP") {
         return res.badRequest("Only PENDING_OTP transactions can be cancelled");
       }
@@ -409,6 +590,11 @@ export default async function adminPlugin(api) {
     }
 
     if (action === "REVERSE") {
+      const isSuper = req.user?.admin_role === "SUPER_ADMIN" || req.user?.email === "admin@novabank.com";
+      if (!isSuper) {
+        return res.forbidden("Only Master Administrators can reverse settled transactions");
+      }
+
       if (tx.status !== "COMPLETED") {
         return res.badRequest("Only COMPLETED transactions can be reversed");
       }

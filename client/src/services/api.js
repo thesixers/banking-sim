@@ -50,6 +50,23 @@ export const api = {
         method: "POST",
         body: JSON.stringify(details),
       }),
+    verifyEmail: (data) =>
+      fetchApi("/auth/verify-email", {
+        method: "POST",
+        body: JSON.stringify(data),
+      }),
+    resendVerification: () =>
+      fetchApi("/auth/resend-verification", { method: "POST" }),
+    reactivateDormant: (data) =>
+      fetchApi("/auth/reactivate-dormant", {
+        method: "POST",
+        body: JSON.stringify(data),
+      }),
+    resendDormantCode: (email) =>
+      fetchApi("/auth/resend-dormant-code", {
+        method: "POST",
+        body: JSON.stringify({ email }),
+      }),
     me: () => fetchApi("/auth/me"),
   },
   accounts: {
@@ -58,13 +75,12 @@ export const api = {
       const q = new URLSearchParams(params).toString();
       return fetchApi(`/accounts/transactions${q ? `?${q}` : ""}`);
     },
-    faucet: (data) =>
-      fetchApi("/accounts/faucet", {
-        method: "POST",
-        body: JSON.stringify(data),
-      }),
     toggleFreeze: () =>
       fetchApi("/accounts/card/toggle-freeze", {
+        method: "POST",
+      }),
+    applyForCard: () =>
+      fetchApi("/accounts/card/apply", {
         method: "POST",
       }),
   },
@@ -120,6 +136,22 @@ export const api = {
         method: "POST",
         body: JSON.stringify({ is_frozen }),
       }),
+    approveCard: (id) =>
+      fetchApi(`/admin/users/${id}/approve-card`, {
+        method: "POST",
+      }),
+    rejectCard: (id) =>
+      fetchApi(`/admin/users/${id}/reject-card`, {
+        method: "POST",
+      }),
+    toggleDormant: (id) =>
+      fetchApi(`/admin/users/${id}/toggle-dormant`, {
+        method: "POST",
+      }),
+    verifyEmail: (id) =>
+      fetchApi(`/admin/users/${id}/verify-email`, {
+        method: "POST",
+      }),
     resetPassword: (id, new_password) =>
       fetchApi(`/admin/users/${id}/reset-password`, {
         method: "POST",
@@ -128,6 +160,11 @@ export const api = {
     deleteUser: (id) =>
       fetchApi(`/admin/users/${id}`, {
         method: "DELETE",
+      }),
+    setRole: (id, data) =>
+      fetchApi(`/admin/users/${id}/set-role`, {
+        method: "POST",
+        body: JSON.stringify(data),
       }),
     transactions: (params = {}) => {
       const q = new URLSearchParams(params).toString();

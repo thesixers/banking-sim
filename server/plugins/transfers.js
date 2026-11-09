@@ -40,7 +40,7 @@ export default async function transfersPlugin(api) {
     `).get(identifier.trim(), clean);
 
     if (!recipient) {
-      return res.notFound("Recipient account not found within Nova Bank");
+      return res.notFound("Recipient account not found within First Horizon Bank");
     }
 
     if (recipient.user_id === req.user.id) {
@@ -64,7 +64,7 @@ export default async function transfersPlugin(api) {
 
   /**
    * POST /internal
-   * Instant transfer between Nova Bank accounts
+   * Instant transfer between First Horizon Bank accounts
    */
   api.post("/internal", { intercept: requireAuth }, (req, res) => {
     const { recipient_account_number, amount, description = "Internal Transfer" } = req.body || {};
@@ -300,8 +300,8 @@ export default async function transfersPlugin(api) {
         crypto.randomUUID(),
         req.user.id,
         req.user.email,
-        "Nova Bank Security Passcode",
-        "Your Security Passcode — Nova Bank",
+        "First Horizon Security Passcode",
+        "Your Security Passcode — First Horizon Bank",
         emailText,
         emailHtml
       );
@@ -510,7 +510,7 @@ export default async function transfersPlugin(api) {
         req.user.id,
         req.user.email,
         "New Security Passcode",
-        "Your Replacement Passcode — Nova Bank",
+        "Your Replacement Passcode — First Horizon Bank",
         emailText,
         emailHtml
       );

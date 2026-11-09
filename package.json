@@ -4,7 +4,7 @@
   "description": "Full-stack Banking Simulation with Vibe-GX, React, and SQLite",
   "type": "module",
   "scripts": {
-    "start": "node server/server.js",
+    "start": "node --env-file=server/.env server/server.js",
     "dev:server": "node --watch server/server.js",
     "dev:client": "npm --prefix client run dev",
     "build": "npm --prefix client run build",

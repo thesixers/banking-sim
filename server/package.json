@@ -5,13 +5,15 @@
   "type": "module",
   "main": "server.js",
   "scripts": {
-    "start": "node server.js",
+    "start": "node --env-file=.env server.js",
     "dev": "node --watch server.js",
     "test:db": "node db/test.js"
   },
   "dependencies": {
+    "banking-sim-server": "link:",
     "bcryptjs": "^2.4.3",
     "jsonwebtoken": "^9.0.2",
+    "resend": "^6.37.0",
     "vibe-gx": "^4.3.0"
   }
 }

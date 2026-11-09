@@ -10,7 +10,7 @@ export default async function accountsPlugin(api) {
    */
   api.get("/", { intercept: requireAuth }, (req, res) => {
     const account = db.prepare(`
-      SELECT id, account_number, routing_number, account_type, balance, currency, card_number, card_cvv, card_expiry, is_frozen, created_at
+      SELECT id, account_number, routing_number, account_type, balance, currency, card_number, card_cvv, card_expiry, card_status, card_applied_at, is_frozen, created_at
       FROM accounts
       WHERE user_id = ?
     `).get(req.user.id);
@@ -89,62 +89,46 @@ export default async function accountsPlugin(api) {
 
   /**
    * POST /faucet
-   * Instant test fund top-up (simulated salary/deposit)
+   * Disabled: Account balance adjustments are strictly restricted to Master Administrator Vault Controls.
    */
-  api.post("/faucet", { intercept: requireAuth }, (req, res) => {
-    const { amount = 500, label = "Payroll Direct Deposit" } = req.body || {};
-    const topUpAmount = Math.max(10, Math.min(Number(amount) || 500, 10000));
-    const accountId = req.account.id;
-    const refId = generateReferenceId("DEP");
+  api.post("/faucet", (req, res) => {
+    return res.status(403).json({
+      success: false,
+      error: "Self top-up is disabled. Account funding and balance adjustments must be authorized by an Administrator.",
+    });
+  });
 
+  /**
+   * POST /card/apply
+   * User applies for a debit card (requires admin approval)
+   */
+  api.post("/card/apply", { intercept: requireAuth }, (req, res) => {
+    const account = db.prepare("SELECT id, card_status FROM accounts WHERE user_id = ?").get(req.user.id);
+    if (!account) return res.notFound("Account not found");
+
+    if (account.card_status === "ACTIVE") {
+      return res.badRequest("You already have an active Visa debit card.");
+    }
+    if (account.card_status === "PENDING") {
+      return res.success({ card_status: "PENDING" }, "Your card application is already under administrative review.");
+    }
+
+    const appliedAt = new Date().toISOString().replace("T", " ").slice(0, 19);
     transaction(() => {
-      // 1. Credit balance
       db.prepare(`
-        UPDATE accounts SET balance = balance + ? WHERE id = ?
-      `).run(topUpAmount, accountId);
-
-      // 2. Record ledger
-      db.prepare(`
-        INSERT INTO transactions (
-          id, reference_id, recipient_account_id, type, amount, fee, status, description
-        ) VALUES (?, ?, ?, 'FAUCET', ?, 0.00, 'COMPLETED', ?)
-      `).run(crypto.randomUUID(), refId, accountId, topUpAmount, label);
-
-      // 3. Email Notification
-      const depositHtml = generateTransactionAlertHtml({
-        fullName: req.user.full_name,
-        type: "CREDIT",
-        amount: topUpAmount,
-        counterparty: label,
-        referenceId: refId,
-        newBalance: (req.account.balance || 0) + topUpAmount,
-      });
+        UPDATE accounts SET card_status = 'PENDING', card_applied_at = ? WHERE id = ?
+      `).run(appliedAt, account.id);
 
       db.prepare(`
-        INSERT INTO notifications (id, user_id, email, title, subject, message, html_content, type)
-        VALUES (?, ?, ?, ?, ?, ?, ?, 'EMAIL')
-      `).run(
-        crypto.randomUUID(),
-        req.user.id,
-        req.user.email,
-        "Deposit Received",
-        `Deposit Received: $${topUpAmount.toFixed(2)} credited to your account`,
-        `Your account has been credited with $${topUpAmount.toFixed(2)} via ${label}. Ref: ${refId}.`,
-        depositHtml
-      );
+        INSERT INTO notifications (id, user_id, email, title, subject, message, type)
+        VALUES (?, ?, ?, 'Card Application Submitted', 'First Horizon Platinum Card Request Received',
+                'Your application for a First Horizon Platinum Virtual Visa debit card has been submitted. An administrator will review your application before card issuance.', 'EMAIL')
+      `).run(crypto.randomUUID(), req.user.id, req.user.email);
     });
 
-    const updatedAccount = db.prepare(`
-      SELECT balance FROM accounts WHERE id = ?
-    `).get(accountId);
-
     return res.success(
-      {
-        new_balance: updatedAccount.balance,
-        reference_id: refId,
-        amount: topUpAmount,
-      },
-      `Successfully deposited $${topUpAmount.toFixed(2)}`
+      { card_status: "PENDING", card_applied_at: appliedAt },
+      "Your card application has been submitted and is pending administrator approval."
     );
   });
 
@@ -154,7 +138,10 @@ export default async function accountsPlugin(api) {
    */
   api.post("/card/toggle-freeze", { intercept: requireAuth }, (req, res) => {
     const accountId = req.account.id;
-    const current = db.prepare("SELECT is_frozen FROM accounts WHERE id = ?").get(accountId);
+    const current = db.prepare("SELECT is_frozen, card_status FROM accounts WHERE id = ?").get(accountId);
+    if (!current || current.card_status !== "ACTIVE") {
+      return res.badRequest("You do not have an active debit card.");
+    }
     const newStatus = current.is_frozen === 1 ? 0 : 1;
 
     db.prepare("UPDATE accounts SET is_frozen = ? WHERE id = ?").run(newStatus, accountId);

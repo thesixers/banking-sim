@@ -1,5 +1,5 @@
 import React, { useState } from "react";
-import { ArrowDownLeft, ArrowUpRight, Building2, RefreshCw, Sparkles, Filter, Receipt } from "lucide-react";
+import { ArrowDownLeft, ArrowUpRight, Building2, RefreshCw, Receipt } from "lucide-react";
 
 export default function TransactionList({ transactions, loading, onSelectTransaction }) {
   const [filter, setFilter] = useState("ALL"); // ALL | INFLOW | OUTFLOW | EXTERNAL | INTERNAL
@@ -14,12 +14,12 @@ export default function TransactionList({ transactions, loading, onSelectTransac
   });
 
   return (
-    <div className="bg-navy-900/90 border border-slate-800 rounded-3xl p-6 shadow-xl">
+    <div className="bg-white border border-slate-200 rounded-3xl p-6 sm:p-7 shadow-sm">
       {/* Header & Filter pills */}
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pb-4 border-b border-slate-800/80">
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pb-4 border-b border-slate-100">
         <div>
-          <h3 className="text-base font-bold text-white">Activity Ledger</h3>
-          <p className="text-xs text-slate-400">Complete transaction history & receipts</p>
+          <h3 className="text-base font-extrabold text-[#001F5F]">Transaction Activity Ledger</h3>
+          <p className="text-xs text-slate-500">Official statement records &amp; wire confirmations</p>
         </div>
 
         {/* Filter Buttons */}
@@ -28,10 +28,10 @@ export default function TransactionList({ transactions, loading, onSelectTransac
             <button
               key={f}
               onClick={() => setFilter(f)}
-              className={`px-3 py-1.5 rounded-xl text-[11px] font-semibold transition ${
+              className={`px-3 py-1.5 rounded-xl text-[11px] font-bold transition whitespace-nowrap ${
                 filter === f
-                  ? "bg-brand-600 text-white shadow-sm"
-                  : "bg-navy-950 text-slate-400 hover:text-white border border-slate-800"
+                  ? "bg-[#004DA7] text-white shadow-sm"
+                  : "bg-slate-100 text-slate-600 hover:bg-slate-200 border border-slate-200"
               }`}
             >
               {f === "ALL" ? "All Activity" : f.charAt(0) + f.slice(1).toLowerCase()}
@@ -41,17 +41,17 @@ export default function TransactionList({ transactions, loading, onSelectTransac
       </div>
 
       {/* Transaction List */}
-      <div className="mt-4 divide-y divide-slate-800/60">
+      <div className="mt-3 divide-y divide-slate-100">
         {loading ? (
           <div className="py-12 flex flex-col items-center justify-center text-slate-400 gap-2">
-            <RefreshCw className="w-5 h-5 animate-spin text-brand-400" />
-            <span className="text-xs">Loading ledger...</span>
+            <RefreshCw className="w-5 h-5 animate-spin text-[#004DA7]" />
+            <span className="text-xs font-medium">Retrieving activity from First Horizon core...</span>
           </div>
         ) : filtered.length === 0 ? (
-          <div className="py-12 text-center text-slate-500">
-            <Receipt className="w-8 h-8 mx-auto mb-2 opacity-40" />
-            <p className="text-sm font-medium">No transactions found</p>
-            <p className="text-xs text-slate-500 mt-1">Make a transfer or deposit to view activity.</p>
+          <div className="py-12 text-center text-slate-400">
+            <Receipt className="w-8 h-8 mx-auto mb-2 opacity-30 text-slate-500" />
+            <p className="text-sm font-semibold text-slate-700">No transactions found</p>
+            <p className="text-xs text-slate-400 mt-1">Make a deposit or initiate a wire transfer to see activity.</p>
           </div>
         ) : (
           filtered.map((tx) => {
@@ -63,24 +63,20 @@ export default function TransactionList({ transactions, loading, onSelectTransac
               <div
                 key={tx.id}
                 onClick={() => onSelectTransaction(tx)}
-                className="py-3.5 px-3 rounded-2xl flex items-center justify-between hover:bg-slate-800/40 cursor-pointer transition group"
+                className="py-3.5 px-3 rounded-2xl flex items-center justify-between hover:bg-slate-50/80 cursor-pointer transition group"
               >
                 {/* Left: Icon & Details */}
-                <div className="flex items-center gap-3">
+                <div className="flex items-center gap-3.5 min-w-0">
                   <div
                     className={`w-10 h-10 rounded-2xl flex items-center justify-center flex-shrink-0 border ${
-                      isFaucet
-                        ? "bg-emerald-500/10 border-emerald-500/20 text-emerald-400"
-                        : isExternal
-                        ? "bg-indigo-500/10 border-indigo-500/20 text-indigo-400"
+                      isExternal
+                        ? "bg-blue-50 border-blue-200 text-[#004DA7]"
                         : isOutflow
-                        ? "bg-rose-500/10 border-rose-500/20 text-rose-400"
-                        : "bg-emerald-500/10 border-emerald-500/20 text-emerald-400"
+                        ? "bg-slate-100 border-slate-200 text-slate-700"
+                        : "bg-emerald-50 border-emerald-200 text-emerald-700"
                     }`}
                   >
-                    {isFaucet ? (
-                      <Sparkles className="w-4 h-4" />
-                    ) : isExternal ? (
+                    {isExternal ? (
                       <Building2 className="w-4 h-4" />
                     ) : isOutflow ? (
                       <ArrowUpRight className="w-4 h-4" />
@@ -89,25 +85,25 @@ export default function TransactionList({ transactions, loading, onSelectTransac
                     )}
                   </div>
 
-                  <div>
-                    <h4 className="text-xs sm:text-sm font-semibold text-white group-hover:text-brand-300 transition">
+                  <div className="min-w-0">
+                    <h4 className="text-xs sm:text-sm font-bold text-[#001F5F] group-hover:text-[#004DA7] transition truncate">
                       {isFaucet
                         ? tx.description
                         : isExternal
-                        ? `Wire: ${tx.external_bank_details?.beneficiary_name || "External Transfer"}`
+                        ? `Wire: ${tx.external_bank_details?.beneficiary_name || "External Beneficiary"}`
                         : isOutflow
-                        ? `Sent to ${tx.recipient_name || "Internal Beneficiary"}`
+                        ? `Sent to ${tx.recipient_name || "Internal Customer"}`
                         : `Received from ${tx.sender_name || "Sender"}`}
                     </h4>
 
-                    <div className="flex items-center gap-2 mt-0.5 text-[11px] text-slate-500">
+                    <div className="flex items-center gap-2 mt-0.5 text-[11px] text-slate-500 flex-wrap">
                       <span>{new Date(tx.created_at).toLocaleDateString()}</span>
-                      <span>•</span>
-                      <span className="font-mono text-[10px] text-slate-400">{tx.reference_id}</span>
+                      <span>&bull;</span>
+                      <span className="font-mono text-[10px] text-slate-600 font-semibold">{tx.reference_id}</span>
                       {isExternal && (
                         <>
-                          <span>•</span>
-                          <span className="text-[10px] text-brand-400">
+                          <span>&bull;</span>
+                          <span className="text-[10px] text-[#004DA7] font-semibold">
                             {tx.external_bank_details?.bank_name}
                           </span>
                         </>
@@ -117,26 +113,26 @@ export default function TransactionList({ transactions, loading, onSelectTransac
                 </div>
 
                 {/* Right: Amount & Status */}
-                <div className="text-right">
+                <div className="text-right flex-shrink-0 pl-3">
                   <div
-                    className={`font-mono font-bold text-xs sm:text-sm ${
-                      isOutflow ? "text-slate-100" : "text-emerald-400"
+                    className={`font-mono font-extrabold text-xs sm:text-sm ${
+                      isOutflow ? "text-slate-900" : "text-emerald-700"
                     }`}
                   >
                     {isOutflow ? "-" : "+"}${Number(tx.amount).toFixed(2)}
                   </div>
                   {tx.fee > 0 && (
-                    <p className="text-[10px] text-slate-500 font-mono">
+                    <p className="text-[10px] text-slate-400 font-mono">
                       fee: ${Number(tx.fee).toFixed(2)}
                     </p>
                   )}
                   <span
-                    className={`inline-block text-[9px] font-bold uppercase tracking-wider px-2 py-0.5 rounded-full mt-1 ${
+                    className={`inline-block text-[9px] font-bold uppercase tracking-wider px-2 py-0.5 rounded-full mt-1 border ${
                       tx.status === "COMPLETED"
-                        ? "bg-emerald-500/10 text-emerald-400"
+                        ? "bg-emerald-50 text-emerald-700 border-emerald-200"
                         : tx.status === "PENDING_OTP"
-                        ? "bg-amber-500/10 text-amber-400"
-                        : "bg-rose-500/10 text-rose-400"
+                        ? "bg-amber-50 text-amber-700 border-amber-200"
+                        : "bg-rose-50 text-rose-700 border-rose-200"
                     }`}
                   >
                     {tx.status}

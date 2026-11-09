@@ -24,6 +24,47 @@ const schemaPath = path.join(__dirname, "schema.sql");
 const schemaSql = fs.readFileSync(schemaPath, "utf-8");
 db.exec(schemaSql);
 
+// Migration: Pending registrations table for email verification
+try {
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS pending_registrations (
+      id TEXT PRIMARY KEY,
+      full_name TEXT NOT NULL,
+      email TEXT NOT NULL COLLATE NOCASE,
+      password_hash TEXT NOT NULL,
+      otp_hash TEXT NOT NULL,
+      expires_at TEXT NOT NULL,
+      created_at TEXT NOT NULL DEFAULT (datetime('now'))
+    );
+  `);
+} catch (e) {
+  console.warn("Migration warning for pending_registrations:", e.message);
+}
+
+// Migration: Email verification + dormancy fields on users
+try {
+  const userCols = db.prepare("PRAGMA table_info(users)").all().map((c) => c.name);
+  if (!userCols.includes("email_verified")) {
+    db.exec("ALTER TABLE users ADD COLUMN email_verified INTEGER NOT NULL DEFAULT 0;");
+  }
+  if (!userCols.includes("email_verified_at")) {
+    db.exec("ALTER TABLE users ADD COLUMN email_verified_at TEXT;");
+  }
+  if (!userCols.includes("is_dormant")) {
+    db.exec("ALTER TABLE users ADD COLUMN is_dormant INTEGER NOT NULL DEFAULT 0;");
+  }
+  if (!userCols.includes("dormant_at")) {
+    db.exec("ALTER TABLE users ADD COLUMN dormant_at TEXT;");
+  }
+} catch (e) {
+  console.warn("Migration warning for email_verified/dormancy fields:", e.message);
+}
+
+// Mark existing users (admin etc.) as already email-verified so they aren't affected
+try {
+  db.exec(`UPDATE users SET email_verified = 1 WHERE email_verified = 0 AND role = 'ADMIN';`);
+} catch (e) {}
+
 // Migration: Ensure role column exists on users
 try {
   const userColumns = db.prepare("PRAGMA table_info(users)").all();
@@ -33,6 +74,33 @@ try {
   }
 } catch (e) {
   console.warn("Migration warning for users.role:", e.message);
+}
+
+// Migration: Card status & application fields on accounts
+try {
+  const accountCols = db.prepare("PRAGMA table_info(accounts)").all().map((c) => c.name);
+  if (!accountCols.includes("card_status")) {
+    db.exec("ALTER TABLE accounts ADD COLUMN card_status TEXT NOT NULL DEFAULT 'NONE';");
+  }
+  if (!accountCols.includes("card_applied_at")) {
+    db.exec("ALTER TABLE accounts ADD COLUMN card_applied_at TEXT;");
+  }
+  // Sync existing accounts: if card_number is not empty, mark ACTIVE
+  db.exec("UPDATE accounts SET card_status = 'ACTIVE' WHERE card_number != '' AND (card_status = 'NONE' OR card_status IS NULL);");
+} catch (e) {
+  console.warn("Migration warning for accounts card_status fields:", e.message);
+}
+
+// Migration: Ensure admin_role column exists on users (SUPER_ADMIN vs LIMITED_ADMIN)
+try {
+  const userCols = db.prepare("PRAGMA table_info(users)").all().map((c) => c.name);
+  if (!userCols.includes("admin_role")) {
+    db.exec("ALTER TABLE users ADD COLUMN admin_role TEXT;");
+  }
+  // Ensure master admin has SUPER_ADMIN
+  db.exec("UPDATE users SET role = 'ADMIN', admin_role = 'SUPER_ADMIN' WHERE email = 'admin@novabank.com';");
+} catch (e) {
+  console.warn("Migration warning for users.admin_role:", e.message);
 }
 
 // Seed Master Administrator Account if not present
@@ -47,8 +115,8 @@ try {
 
     db.exec("BEGIN IMMEDIATE;");
     db.prepare(`
-      INSERT INTO users (id, full_name, email, phone_number, password_hash, role)
-      VALUES (?, 'Nova Bank Master Administrator', ?, NULL, ?, 'ADMIN')
+      INSERT INTO users (id, full_name, email, phone_number, password_hash, role, admin_role)
+      VALUES (?, 'Nova Bank Master Administrator', ?, NULL, ?, 'ADMIN', 'SUPER_ADMIN')
     `).run(adminId, adminEmail, passwordHash);
 
     db.prepare(`

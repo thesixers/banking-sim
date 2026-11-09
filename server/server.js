@@ -1,3 +1,6 @@
+import { loadEnvFile } from "node:process";
+try { loadEnvFile(new URL(".env", import.meta.url)); } catch { /* .env is optional */ }
+
 import vibe, { cors } from "vibe-gx";
 import path from "path";
 import fs from "fs";
@@ -43,7 +46,7 @@ app.setErrorHandler((error, req, res) => {
 // Health check endpoint
 app.get("/api/health", () => ({
   status: "ONLINE",
-  name: "Nova Bank Simulation API",
+  name: "First Horizon Bank API",
   framework: "Vibe-GX",
   timestamp: new Date().toISOString(),
 }));
@@ -59,6 +62,12 @@ await app.register(adminPlugin, { prefix: "/api/admin" });
 const clientDist = path.resolve(__dirname, "../client/dist");
 if (fs.existsSync(clientDist)) {
   app.setPublicFolder(clientDist);
+
+  // Root landing / SPA index
+  app.get("/", (req, res) => {
+    res.setHeader("Cache-Control", "no-cache, no-store, must-revalidate");
+    res.sendHtml("index.html");
+  });
   
   // Static assets
   app.get("/assets/*", (req, res) => {
@@ -66,21 +75,28 @@ if (fs.existsSync(clientDist)) {
     res.sendFile(cleanPath);
   });
 
-  // SPA fallback for React Router
+  // SPA fallback for React Router and root-level static files
   app.get("/*", (req, res) => {
     // Avoid intercepting API routes that returned 404
     if (req.url.startsWith("/api/")) {
       return res.status(404).json({ error: "Endpoint not found" });
     }
+
+    const cleanPath = req.url.split("?")[0].replace(/^\//, "");
+    const filePath = path.resolve(clientDist, cleanPath);
+    if (cleanPath && fs.existsSync(filePath) && fs.statSync(filePath).isFile()) {
+      return res.sendFile(cleanPath);
+    }
+
     res.setHeader("Cache-Control", "no-cache, no-store, must-revalidate");
     res.sendHtml("index.html");
   });
 }
 
 // Start Server
-app.listen(PORT, "0.0.0.0", () => {
+app.listen(PORT, () => {
   console.log(`\n=================================================`);
-  console.log(`🏦  Nova Bank Simulation Server is RUNNING!`);
+  console.log(`🏦  First Horizon Bank Server is RUNNING!`);
   console.log(`⚡  Framework: Vibe-GX (High Performance ESM)`);
   console.log(`🔗  Local API: http://localhost:${PORT}/api/health`);
   console.log(`=================================================\n`);
